@@ -4,14 +4,21 @@ use tokio::{
     sync::broadcast,
 };
 
+fn give_me_default<T>() -> T
+where
+    T: Default,
+{
+    Default::default()
+}
+
 #[tokio::main]
 async fn main() {
     let listener = TcpListener::bind("localhost:8080").await.unwrap();
 
-    let (tx, _rx) = broadcast::channel::<String>(10);
+    let (tx, _rx) = broadcast::channel(10);
 
     loop {
-        let (mut socket, _addr) = listener.accept().await.unwrap();
+        let (mut socket, addr) = listener.accept().await.unwrap();
 
         let tx = tx.clone();
         let mut rx = tx.subscribe();
@@ -21,6 +28,7 @@ async fn main() {
             let mut reader = BufReader::new(reader);
             let mut line = String::new();
 
+            
             loop {
                 tokio::select! {
                     result = reader.read_line(&mut line) => {
@@ -28,17 +36,20 @@ async fn main() {
                             break;
                         }
 
-                        tx.send(line.clone()).unwrap();
+                        tx.send((line.clone(), addr)).unwrap();
                         line.clear();
                     }
 
                     result = rx.recv() => {
-                        let msg = result.unwrap();
-                        writer.write_all(msg.as_bytes()).await.unwrap();
+                        let (msg, other_addr) = result.unwrap();
+                        if addr != other_addr {
+                            writer.write_all(msg.as_bytes()).await.unwrap();
+
+                        }
 
                     }
                 }
             } // end of loop
         });
-    }// end of loop
+    } // end of loop
 }
